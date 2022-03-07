@@ -14,7 +14,11 @@ MonoBehaviour:
   id: double_on
   title: Double-On
   author: NickLatkovich
-  description: There are two buttons. "ON" and "ON". Which one will you press?
+  description: 'There are two buttons. "ON" and "ON". Which one will you press?
+
+    Solo Module
+
+    [Modding Jam #3]'
   version: 0.1.0
   outputFolder: build
   previewImage: {fileID: 2800000, guid: 248c65adda424614499e33c1ad36b1b5, type: 3}
