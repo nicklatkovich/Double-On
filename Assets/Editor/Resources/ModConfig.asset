@@ -19,6 +19,6 @@ MonoBehaviour:
     Solo Module
 
     [Modding Jam #3]'
-  version: 0.1.0
+  version: 1.0.1
   outputFolder: build
   previewImage: {fileID: 2800000, guid: 248c65adda424614499e33c1ad36b1b5, type: 3}

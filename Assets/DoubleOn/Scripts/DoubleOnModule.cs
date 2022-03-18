@@ -80,6 +80,7 @@ public class DoubleOnModule : ModuleScript {
 			_leds[j] = Instantiate(LEDPrefab);
 			_leds[j].transform.parent = GridContainer;
 			_leds[j].transform.localPosition = new Vector3(_puzzle.LEDPositions[j].x * GRID_CELL_SIZE, 0f, -_puzzle.LEDPositions[j].y * GRID_CELL_SIZE);
+			_leds[j].transform.localScale = Vector3.one;
 			_leds[j].transform.localRotation = Quaternion.identity;
 		}
 		Selectable.Children = _buttons.Select(b => b.Selectable).ToArray();
