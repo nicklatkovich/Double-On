@@ -19,6 +19,7 @@ public class DoubleOnPuzzle {
 	public int[][] ButtonColors;
 	public int[] ColorCounts = new int[COLORS_COUNT];
 	public int[] Solution;
+	public int[] Presses;
 	public int[] LeftColorPresses;
 	public bool[] LitLEDs;
 	public List<int> SolutionLog;
@@ -46,6 +47,7 @@ public class DoubleOnPuzzle {
 		}
 		LEDPositions = ledPositions.ToArray();
 		ButtonPositions = buttonPositions.ToArray();
+		SortLEDs();
 		// for (int j = 0; j < ButtonPositions.Length; j++) {
 		// 	int cl1 = Random.Range(0, 6);
 		// 	int cl2 = Random.Range(0, 6);
@@ -133,6 +135,28 @@ public class DoubleOnPuzzle {
 	public void Reset() {
 		LitLEDs = new bool[LEDPositions.Length];
 		LeftColorPresses = ColorCounts.ToArray();
+		Presses = Enumerable.Range(0, LEDPositions.Length).Select(_ => -1).ToArray();
+	}
+
+	public void Press(int btnInd) {
+		int ledInd = btnInd / 2;
+		if (LitLEDs[ledInd]) return;
+		LitLEDs[ledInd] = true;
+		Presses[ledInd] = btnInd % 2;
+		foreach (int colorIndex in ButtonColors[btnInd]) LeftColorPresses[colorIndex] -= 1;
+	}
+
+	private void SortLEDs() {
+		for (int j = 0; j < LEDPositions.Length; j++) {
+			for (int k = j + 1; k < LEDPositions.Length; k++) {
+				int yDiff = LEDPositions[k].y - LEDPositions[j].y;
+				if (yDiff > 0) continue;
+				if (yDiff == 0 && LEDPositions[k].x > LEDPositions[j].x) continue;
+				Swap(LEDPositions, j, k);
+				Swap(ButtonPositions, 2 * j, 2 * k);
+				Swap(ButtonPositions, 2 * j + 1, 2 * k + 1);
+			}
+		}
 	}
 
 	private int[] GenerateSolutionPath() {
@@ -141,6 +165,12 @@ public class DoubleOnPuzzle {
 			res.Add(Random.Range(0, COLORS_COUNT - 1));
 		}
 		return res.Shuffle().ToArray();
+	}
+
+	private static void Swap<T>(T[] arr, int j, int k) {
+		T temp = arr[j];
+		arr[j] = arr[k];
+		arr[k] = temp;
 	}
 
 	private static int Not(int num) {

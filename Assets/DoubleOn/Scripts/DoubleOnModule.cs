@@ -1,5 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using KeepCoding;
 
@@ -24,6 +26,12 @@ public class DoubleOnModule : ModuleScript {
 
 	private static readonly char[] COLOR_SHORT_NAMES = "RGBCMYKW".ToArray().Take(DoubleOnPuzzle.COLORS_COUNT).ToArray();
 
+	public readonly string TwitchHelpMessage = new[] {
+		"\"!{0} read\" - show button colors in chat",
+		"\"!{0} 1BG 2RR 3CM\" - press buttons of certain colors",
+		"The number before colors is the number of the LED connected to the button in the reading order starting from 1",
+	}.Join(" | ");
+
 	public Material UnlitConnectionMaterial;
 	public Material LitConnectionMaterial;
 	public Transform GridContainer;
@@ -35,7 +43,9 @@ public class DoubleOnModule : ModuleScript {
 	public NumDisplayComponent NumDisplayPrefab;
 	public ConnectionComponent ConnectionPrefab;
 
+	private string _readMessage;
 	private int[] _shuffledColorInds;
+	private int[] _colorIndsDecoder;
 	private DoubleOnPuzzle _puzzle;
 	private ButtonComponent[] _buttons;
 	private ConnectionComponent[] _connections;
@@ -47,6 +57,8 @@ public class DoubleOnModule : ModuleScript {
 
 	private void Start() {
 		_shuffledColorInds = Enumerable.Range(0, DoubleOnPuzzle.COLORS_COUNT).ToArray().Shuffle();
+		_colorIndsDecoder = new int[_shuffledColorInds.Length];
+		for (int j = 0; j < _shuffledColorInds.Length; j++) _colorIndsDecoder[_shuffledColorInds[j]] = j;
 		_colors = _shuffledColorInds.Select(j => COLORS[j]).ToArray();
 		// _colors = COLORS.ToArray();
 		_puzzle = new DoubleOnPuzzle();
@@ -120,19 +132,14 @@ public class DoubleOnModule : ModuleScript {
 		int count = _puzzle.ButtonColors[index][0] == _puzzle.ButtonColors[index][1] ? 2 : 1;
 		foreach (int colorIndex in _puzzle.ButtonColors[index]) {
 			if (_puzzle.LeftColorPresses[colorIndex] >= count) continue;
-			Strike();
 			SubmitLog();
 			Log("{0} color limit exceeded. Strike!", COLOR_SHORT_NAMES[_shuffledColorInds[colorIndex]]);
-			_puzzle.Reset();
-			foreach (LEDComponent led in _leds) led.SelfRenderer.material.color = Color.black;
-			for (int j = 0; j < DoubleOnPuzzle.COLORS_COUNT - 1; j++) {
-				_numDisplays[_colorDisplayIndex[j]].FrontText.text = _puzzle.ColorCounts[j].ToString().PadLeft(2, ' ');
-			}
-			foreach (ConnectionComponent conn in _connections) conn.SelfRenderer.material = UnlitConnectionMaterial;
+			Strike();
+			Reset();
 			return;
 		}
+		_puzzle.Press(index);
 		foreach (int colorIndex in _puzzle.ButtonColors[index]) {
-			_puzzle.LeftColorPresses[colorIndex] -= 1;
 			if (colorIndex < DoubleOnPuzzle.COLORS_COUNT - 1) {
 				_numDisplays[_colorDisplayIndex[colorIndex]].FrontText.text = _puzzle.LeftColorPresses[colorIndex].ToString().PadLeft(2, ' ');
 			}
@@ -140,12 +147,81 @@ public class DoubleOnModule : ModuleScript {
 		_leds[ledIndex].SelfRenderer.material.color = Color.green;
 		_connections[index].SelfRenderer.material = LitConnectionMaterial;
 		_connections[index].UpdateColors();
-		_puzzle.LitLEDs[ledIndex] = true;
 		if (_puzzle.LitLEDs.All(l => l)) {
 			SubmitLog();
 			Log("Module Solved!");
 			Solve();
 			Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.CorrectChime, transform);
+		}
+	}
+
+	private void Reset() {
+		_puzzle.Reset();
+		foreach (LEDComponent led in _leds) led.SelfRenderer.material.color = Color.black;
+		for (int j = 0; j < DoubleOnPuzzle.COLORS_COUNT - 1; j++) {
+			_numDisplays[_colorDisplayIndex[j]].FrontText.text = _puzzle.ColorCounts[j].ToString().PadLeft(2, ' ');
+		}
+		foreach (ConnectionComponent conn in _connections) conn.SelfRenderer.material = UnlitConnectionMaterial;
+	}
+
+	public IEnumerator ProcessTwitchCommand(string command) {
+		command = command.Trim().ToLower();
+		if (command == "read") {
+			yield return null;
+			yield return "sendtochat {0}, !{1} read is: " + _readMessage;
+			yield break;
+		}
+		if (!Regex.IsMatch(command, @"^([1-9]\d*[rgbcmy]{2}( +|$))+$")) yield break;
+		string[] subCommands = command.Split(' ').Where(s => s.Length > 0).ToArray();
+		int[] btnIndices = subCommands.Select(s => int.Parse(s.Take(s.Length - 2).Join("")) - 1).ToArray();
+		if (new HashSet<int>(btnIndices).Count != btnIndices.Length) yield break;
+		int[][] colInd = subCommands.Select(s => s.Skip(s.Length - 2).Select(c => _colorIndsDecoder[COLOR_SHORT_NAMES.IndexOf(c.ToUpper())]).ToArray()).ToArray();
+		yield return null;
+		if (btnIndices.Any(b => b >= _puzzle.ButtonPositions.Length)) {
+			yield return "sendtochaterror {0}, !{1} invalid LED id.";
+			yield break;
+		}
+		List<KMSelectable> result = new List<KMSelectable>();
+		for (int j = 0; j < btnIndices.Length; j++) {
+			if (_puzzle.LitLEDs[btnIndices[j]]) {
+				yield return "sendtochaterror {0}, !{1} " + string.Format("LED #{0} already lit.", btnIndices[j] + 1);
+				yield break;
+			}
+			int[] cls = colInd[j];
+			int k = -1;
+			for (int kj = 0; kj < 2; kj++) {
+				int[] btnCls = _puzzle.ButtonColors[2 * btnIndices[j] + kj];
+				if ((btnCls[0] == cls[0] && btnCls[1] == cls[1]) || (btnCls[0] == cls[1] && btnCls[1] == cls[0])) {
+					k = kj;
+					break;
+				}
+			}
+			if (k < 0) {
+				yield return new[] {
+					"sendtochaterror {0}, !{1}",
+					string.Format("LED #{0} has no button {1}.", btnIndices[j] + 1, subCommands[j].Skip(subCommands[j].Length - 2).Join("").ToUpper()),
+				}.Join(" ");
+				yield break;
+			}
+			result.Add(_buttons[2 * btnIndices[j] + k].Selectable);
+		}
+		yield return result.ToArray();
+	}
+
+	public IEnumerator TwitchHandleForcedSolve() {
+		yield return null;
+		for (int j = 0; j < _puzzle.LEDPositions.Length; j++) {
+			if (!_puzzle.LitLEDs[j]) continue;
+			if (_puzzle.Solution[j] != _puzzle.Presses[j]) {
+				Reset();
+				yield return new WaitForSeconds(.1f);
+				break;
+			}
+		}
+		for (int j = 0; j < _puzzle.LEDPositions.Length; j++) {
+			if (_puzzle.LitLEDs[j]) continue;
+			PressButton(2 * j + _puzzle.Solution[j]);
+			yield return new WaitForSeconds(.1f);
 		}
 	}
 
@@ -156,9 +232,13 @@ public class DoubleOnModule : ModuleScript {
 
 	private void InitialLog() {
 		Log("Buttons:");
+		List<string> rows = new List<string>();
 		for (int j = 0; j < _puzzle.LEDPositions.Length; j++) {
-			Log("{0}:{1}|{2}", j + 1, ButtonColorsToString(2 * j), ButtonColorsToString(2 * j + 1));
+			string row = string.Format("{0}:{1}|{2}", j + 1, ButtonColorsToString(2 * j), ButtonColorsToString(2 * j + 1));
+			Log(row);
+			rows.Add(row);
 		}
+		_readMessage = rows.Join("; ");
 		Log("Limits: {0}", Enumerable.Range(0, DoubleOnPuzzle.COLORS_COUNT).Select(j => (
 			string.Format("{0}:{1}", COLOR_SHORT_NAMES[_shuffledColorInds[j]], _puzzle.ColorCounts[j])
 		)).Join("; "));
