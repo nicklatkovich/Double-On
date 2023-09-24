@@ -177,7 +177,7 @@ public class DoubleOnModule : ModuleScript {
 		if (new HashSet<int>(btnIndices).Count != btnIndices.Length) yield break;
 		int[][] colInd = subCommands.Select(s => s.Skip(s.Length - 2).Select(c => _colorIndsDecoder[COLOR_SHORT_NAMES.IndexOf(c.ToUpper())]).ToArray()).ToArray();
 		yield return null;
-		if (btnIndices.Any(b => b >= _puzzle.ButtonPositions.Length)) {
+		if (btnIndices.Any(b => b >= _puzzle.LEDPositions.Length)) {
 			yield return "sendtochaterror {0}, !{1} invalid LED id.";
 			yield break;
 		}
